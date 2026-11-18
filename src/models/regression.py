@@ -1,5 +1,4 @@
-# REG: lineal, arboles, MLP, transformers y LSTM
-# CLF: logistica, arboles, MLP, transformers y LSTM
+# REG: lineal, arboles, MLP, transformers y LSTM o GRU
 
 import torch
 import torch.nn as nn
@@ -67,18 +66,50 @@ class LSTMRegressor(nn.Module):
         last_out = self.layer_norm(out[:, -1, :])
         return self.head(last_out)
 
+class GRURegressor(nn.Module):
+    def __init__(
+        self,
+        input_size=8,  # Variables por paso temporal (ej. 8 en T0 y T1)
+        hidden_size=32,  # Tamaño de la memoria interna de la GRU
+        num_gru_layers=1,  # Número de capas GRU apiladas
+        gru_dropout=0.0,  # Dropout entre capas GRU (si num_layers > 1)
+        layer_norm=True,  # Normalización de la salida de la GRU
+        head_layers=None,  # Lista de objetos Layer() para la cabecera
+        out_size=3,  # Salida: 3 notas
+    ):
+        super(GRURegressor, self).__init__()
+        self.gru = nn.GRU(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_gru_layers,
+            batch_first=True,
+            dropout=gru_dropout if num_gru_layers > 1 else 0.0,
+        )
+
+        self.layer_norm = nn.LayerNorm(hidden_size) if layer_norm else nn.Identity()
+
+        if head_layers is None or len(head_layers) == 0:
+            self.head = nn.LazyLinear(out_size)
+        else:
+            self.head = nn.Sequential(*head_layers, nn.LazyLinear(out_size))
+
+    def forward(self, x):
+        out, _ = self.gru(x) # x = [batch_size, seq_len=2 (2 instante), input_size=8 (4demo+4instante)]
+        last_out = self.layer_norm(out[:, -1, :])
+        return self.head(last_out)
+
 class TransformerRegressor(nn.Module):
     def __init__(
             self,
-            input_size=8,  # Variables por paso temporal (ej. 8 en T0 y T1)
-            d_model=32,  # Tamaño de proyección interna de las características
-            nhead=4,  # Número de cabezas de atención (d_model debe ser divisible entre nhead)
-            num_transformer_layers=1,  # Número de bloques Transformer apilados
-            dim_feedforward=64,  # Capa densa interna dentro de cada bloque Transformer
-            transformer_dropout=0.0,  # Dropout interno del Transformer
-            layer_norm=True,  # Normalización al salir del Transformer
-            head_layers=None,  # Capas densas intermedias para la cabecera (usando Layer)
-            out_size=3,  # Salida: 3 notas
+            input_size=8, # Variables por paso temporal (ej. 8 en T0 y T1)
+            d_model=32, # Tamaño de proyección interna de las características
+            nhead=4, # Número de cabezas de atención (d_model debe ser divisible entre nhead)
+            num_transformer_layers=1, # Número de bloques Transformer apilados
+            dim_feedforward=64, # Capa densa interna dentro de cada bloque Transformer
+            transformer_dropout=0.0, # Dropout interno del Transformer
+            layer_norm=True, # Normalización al salir del Transformer
+            head_layers=None, # Capas densas intermedias para la cabecera (usando Layer)
+            out_size=3, # Salida: 3 notas
     ):
         super(TransformerRegressor, self).__init__()
         assert(d_model % nhead == 0)
